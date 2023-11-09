@@ -10,16 +10,17 @@ main(void)
                 char uname[64];
                 char pword[64];
         } users[] = {
-                { "ethan", "dumbass" },
+                { "ethan", "dumby" },
                 { "chris", "boywonder" },
                 { "sonny", "legend" },
                 { "jon", "gamer" },
                 { "luke", "og" },
-                { "pat", "idiot savant" },
+                { "pat", "savant" },
                 { "" },
         };
         struct hashdb *db = NULL;
         struct user *up = NULL;
+        struct user *upp = NULL;
         hashdb_size_t nr_nodes = 4;
         hashdb_size_t nr_buckets = 4;
 
@@ -36,10 +37,21 @@ main(void)
                 err(EX_SOFTWARE, "hashdb_init()");
 
         for (up = users; *up->uname; ++up) {
+                hashdb_dump(db, stdout);
                 if (!hashdb_set(db, up->uname, up->pword)) {
                         perror("hashdb_set");
                         break;
                 }
+        }
+
+        for (upp = users; upp < up; ++upp) {
+                struct user *p = NULL;
+
+                p = hashdb_get(db, upp->uname);
+                if (!p)
+                        err(EX_SOFTWARE, "hashdb_get(%s)", upp->uname);
+
+                printf("%s's password is %s\n", upp->uname, p->pword);
         }
 
         if (hashdb_free(&db, false))
