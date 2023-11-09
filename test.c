@@ -6,45 +6,42 @@
 int
 main(void)
 {
-        struct hashdb *mydb = NULL;
         struct user {
-                char name[64];
+                char uname[64];
                 char pword[64];
-        } u = { "ethan", "password" };
-        struct user *up;
+        } users[] = {
+                { "ethan", "dumbass" },
+                { "chris", "boywonder" },
+                { "sonny", "legend" },
+                { "jon", "gamer" },
+                { "luke", "og" },
+                { "pat", "idiot savant" },
+                { "" },
+        };
+        struct hashdb *db = NULL;
+        struct user *up = NULL;
+        hashdb_size_t nr_nodes = 4;
+        hashdb_size_t nr_buckets = 4;
 
-        mydb = hashdb_init("mydb",
-                           HASHDB_FLAG_SANE_MODE,
-                           4,
-                           4,
-                           64,
-                           64,
-                           NULL,
-                           NULL,
-                           0666);
-        if (!mydb)
+        db = hashdb_init("userdb",
+                         HASHDB_FLAG_SANE_MODE,
+                         nr_nodes,
+                         nr_buckets,
+                         sizeof(users[0].uname),
+                         sizeof(users[0].pword),
+                         NULL,
+                         NULL,
+                         0666);
+        if (!db)
                 err(EX_SOFTWARE, "hashdb_init()");
 
-        (void)hashdb_dump(mydb, stdout);
+        for (up = users; *up->uname; ++up) {
+                if (!hashdb_set(db, up->uname, up->pword)) {
+                        perror("hashdb_set");
+                        break;
+                }
+        }
 
-        up = hashdb_set(mydb, u.name, u.pword);
-        if (up)
-                printf("%s's password is %s\n\n", up->name, up->pword);
-
-        if (hashdb_free(&mydb, false))
+        if (hashdb_free(&db, false))
                 err(EX_SOFTWARE, "hashdb_free()");
-
-        mydb = hashdb_open("mydb", HASHDB_FLAG_SANE_MODE, NULL, NULL);
-        if (!mydb)
-                err(EX_SOFTWARE, "hashdb_open()");
-
-        (void)hashdb_dump(mydb, stdout);
-
-        up = hashdb_get(mydb, u.name);
-        if (up)
-                printf("%s's password is %s\n", up->name, up->pword);
-
-        if (hashdb_free(&mydb, false))
-                err(EX_SOFTWARE, "hashdb_free()");
-
 }

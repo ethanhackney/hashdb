@@ -377,8 +377,10 @@ hashdb_set(struct hashdb *hp, void *key, void *value)
                 curr = next;
         }
 
-        if (!hdr->hh_free)
+        if (!hdr->hh_free) {
+                errno = ENOMEM;
                 return NULL;
+        }
 
         free = hdr->hh_free;
         p = hp->hd_actual + (hp->hd_node_size * free);
