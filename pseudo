@@ -1,0 +1,153 @@
+hashdb_node
+===========
+hn_next:        next on free list or hash chain
+
+hashdb_header
+=============
+hh_nr_nodes:    number of nodes in node table minus NULL node
+hh_nr_buckets:  number of buckets in hash table
+hh_key_size:    size of key in key/value pair
+hh_val_size:    size of value in key/value pair
+hh_free:        index in node table of head of free list
+
+hashdb
+======
+hd_data:        mmap()'ed file data
+hd_node_tab:    pointer in hd_data to (node table + sizeof(NULL node))
+hd_hash_tab:    pointer in hd_data to hash table
+hd_node_size:   size of nodes
+hd_file_size:   total number of bytes in file
+hd_path:        pathname of database
+hd_fd:          database file descriptor
+hd_flags:       flags
+hd_hashfn:      pointer to hash function
+hd_cmpfn:       pointer to key comparison function
+
+hashdb_init(path, flags, nr_nodes, nr_buckets, key_size, val_size, mode):
+        hp = alloc hashdb
+        hp->hd_path = path
+        hp->hd_fd = open(path, O_CREAT | O_RDWR, mode);
+
+        hp->hd_node_size = sizeof(next field) + key_size + val_size
+        hp->hd_file_size = sizeof(hp->hd_hdr) +
+                   (hp->hd_node_size * (nr_nodes + nil_node)) +
+                   (sizeof(hashdb_size_t) * nr_buckets)
+        ftruncate(hp->hd_fd, hp->hd_file_size)
+
+        hp->hd_data = mmap(NULL,
+                           filesize,
+                           PROT_READ | PROT_WRITE,
+                           MAP_SHARED,
+                           hp->hd_fd,
+                           0)
+
+        hdr = hp->hd_hdr
+        hdr->hh_nr_nodes = nr_nodes
+        hdr->hh_nr_buckets = nr_buckets
+        hdr->hh_key_size = key_size
+        hdr->hh_val_size = val_size
+        hdr->hh_free = 1
+        memcpy(hp->hd_data, hdr, sizeof(*hdr))
+
+        p = UCHAR_P(hp->hd_data)
+        hp->hd_node_tab = p + sizeof(*hdr) + hp->hd_node_size
+        p = hp->hd_node_tab
+        for i = 0 to nr_nodes - 1:
+                HASHDB_NODE(p)->hn_next = i + 1
+                p += hp->hd_node_size
+        HASHDB_NODE(p)->hn_next = 0
+
+        hp->hd_hash_tab = UCHAR_P(hp->hd_node_tab) +
+                (hp->hd_node_size * hdr->hh_nr_nodes)
+        memset(hp->hd_hash_tab, 0, sizeof(hashdb_size_t) * hdr->hh_nr_buckets)
+
+        hp->hd_flags = flags
+        return hp
+
+hashdb_free(hp, fully):
+        close(hp->hd_fd)
+        hp->hd_fd = -1
+
+        if fully:
+                unlink(hp->hd_path)
+        free(hp->hd_path)
+        hp->hd_path= NULL
+
+        munmap(hp->hd_data, hp->hd_file_size)
+
+hashdb_open(path, flags):
+        hp = allocate hashdb
+        hp->path = path
+        hp->fd = open(path, O_RDWR)
+
+        read(hp->fd, &hp->hdr, sizeof(hp->hdr))
+
+        hp->hd_node_size = sizeof(next field) + hp->hdr.key_size +
+                hp->hdr.val_size
+        hp->hd_file_size = sizeof(hp->hdr) +
+                           (hp->hd_node_size * (hdr.hh_nr_nodes + 1)) +
+                           (sizeof(hashdb_size_t) * hdr.hh_nr_buckets)
+
+        hp->hd_data = mmap(NULL,
+                           hp->hd_file_size,
+                           PROT_READ | PROT_WRITE,
+                           MAP_SHARED,
+                           hp->hd_fd,
+                           0)
+
+        p = UCHAR_P(hp->hd_data)
+        hp->hd_node_tab = p + sizeof(hp->hd_hdr) + hp->node_size
+        hp->hd_hash_tab = UCHAR_P(hp->hd_node_tab) +
+                (hp->node_size * (hdr.nodes + nil node))
+
+        hp->hd_flags = flags
+        return hp
+
+hashdb_get(hp, key, value):
+        hash = hashfn(key, hp->hdr.key_size
+        idx = hash % hp->hdr.nr_buckets
+        p = UCHAR_P(hp->hd_hash_tab) + (sizeof(hashdb_size_t) * idx)
+        memcpy(curr, p, sizeof(curr))
+
+        while curr is not zero:
+                p = UCHAR_P(hp->hd_node_tab) + (hp->hd_node_size * curr)
+                next = HASHDB_NODE(p)->hn_next
+                keyp = p + sizeof(next field)
+                valp = keyp + hp->hdr.key_size
+                if memcmp key keyp hp->hdr.key_size == 0:
+                        memcpy(value, valp, hp->hdr.val_size)
+                        return keyp
+                curr = next
+
+        return NULL
+
+hashdb_set(hp, key, value):
+        hash = hashfn(key, hp->hdr.key_size
+        idx = hash % hp->hdr.nr_buckets
+        p = UCHAR_P(hp->hd_hash_tab) + (sizeof(hashdb_size_t) * idx)
+        memcpy(curr, p, sizeof(curr))
+        save = curr
+
+        while curr is not zero:
+                p = UCHAR_P(hp->hd_node_tab) + (hp->hd_node_size * curr)
+                next = HASHDB_NODE(p)->hn_next
+                keyp = p + sizeof(next field)
+                valp = keyp + hp->hdr.key_size
+                if memcmp key keyp hp->hdr.key_size == 0:
+                        memcpy(valp, value, hp->hdr.val_size)
+                        return keyp
+                curr = next
+
+        if hdr.free == 0:
+                return NULL
+
+        memcpy(free, hdr.free)
+        p = UCHAR_P(hp->hd_data) + (hp->node_size * free)
+        next = HASHDB_NODE(p)->h_next
+        memcpy(hdr.free, next)
+        memcpy(p + sizeof(next field), key)
+        memcpy(p + sizeof(next field) + hdr.key_size, value)
+        np = HASHDB_NODE(p)->hn_next = save
+        memcpy(hp->hash_tab + (sizeof(hashdb_size_t) * save), free)
+
+        return NULL
