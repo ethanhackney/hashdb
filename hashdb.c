@@ -428,3 +428,55 @@ hashdb_get(struct hashdb *hp, void *key)
 
         return NULL;
 }
+
+int
+hashdb_rm(struct hashdb *hp, void *key)
+{
+        struct hashdb_header *hdr = &hp->hd_hdr;
+        unsigned char *p = NULL;
+        unsigned char *elemp = p;
+        unsigned char *bkt_p = NULL;
+        hashdb_size_t hash;
+        hashdb_size_t bucket;
+        hashdb_size_t curr;
+        hashdb_size_t prev;
+        hashdb_size_t chainlen;
+
+        hash = hp->hd_hashfn(key, hdr->hh_key_size);
+        bucket = hash % hdr->hh_nr_buckets;
+        bkt_p = hp->hd_hash_tab + (sizeof(hashdb_size_t) * bucket);
+        memcpy(&curr, bkt_p, sizeof(curr));
+
+        prev = 0;
+        chainlen = 0;
+        while (curr) {
+                void *keyp = NULL;
+
+                ++chainlen;
+                prev = curr;
+                p = hp->hd_actual + (hp->hd_node_size * curr);
+                keyp = p + sizeof(hashdb_size_t);
+                if (!hp->hd_cmpfn(key, keyp, hdr->hh_key_size))
+                        break;
+
+                curr = HASHDB_NODE_P(p)->hn_next;
+        }
+
+        if (!curr) {
+                errno = ENOENT;
+                return -1;
+        }
+
+        elemp = p;
+        if (chainlen > 1) {
+                p = hp->hd_actual + (hp->hd_node_size * prev);
+                HASHDB_NODE_P(p)->hn_next = HASHDB_NODE_P(elemp)->hn_next;
+        } else {
+                memset(bkt_p, 0, sizeof(hashdb_size_t));
+        }
+
+        HASHDB_NODE_P(elemp)->hn_next = hdr->hh_free;
+        hdr->hh_free = curr;
+        memcpy(hp->hd_data, hdr, sizeof(*hdr));
+        return 0;
+}

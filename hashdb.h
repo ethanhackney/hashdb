@@ -188,4 +188,16 @@ extern void *hashdb_set(struct hashdb *hp, void *key, void *value);
  */
 extern void *hashdb_get(struct hashdb *hp, void *key);
 
+/**
+ * Remove key/value pair from hashdb:
+ *
+ * args:
+ *      @hp:    pointer to hashdb
+ *      @key:   key of pair to remove
+ * ret:
+ *      @success:       0
+ *      @failure:       -1 and errno set
+ */
+extern int hashdb_rm(struct hashdb *hp, void *key);
+
 #endif
