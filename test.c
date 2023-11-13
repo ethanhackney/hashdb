@@ -166,7 +166,7 @@ word_inc(char *base, char *end)
         wf = hashdb_get(g_wordfreq, base);
         if (!wf) {
                 char *dup;
-                hashdb_size_t count = 1;
+                hashdb_size_t count = 0;
 
                 wf = hashdb_set(g_wordfreq, base, &count);
                 if (!wf)
