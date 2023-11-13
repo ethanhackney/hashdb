@@ -342,7 +342,7 @@ hashdb_dump(struct hashdb *hp, FILE *fp)
 void *
 hashdb_set(struct hashdb *hp, void *key, void *value)
 {
-        struct hashdb_header *hdr = &hp->hd_hdr;
+        struct hashdb_header *hdr = NULL;
         unsigned char *p = NULL;
         hashdb_size_t *bp = NULL;
         hashdb_size_t hash;
@@ -357,6 +357,7 @@ hashdb_set(struct hashdb *hp, void *key, void *value)
         if (hashdb_sanity(hp))
                 return NULL;
 
+        hdr = &hp->hd_hdr;
         hash = hp->hd_hashfn(key, hdr->hh_key_size);
         bucket = hash % hdr->hh_nr_buckets;
         bp = (hashdb_size_t *)(hp->hd_hash_tab +
@@ -399,7 +400,7 @@ hashdb_set(struct hashdb *hp, void *key, void *value)
 void *
 hashdb_get(struct hashdb *hp, void *key)
 {
-        struct hashdb_header *hdr = &hp->hd_hdr;
+        struct hashdb_header *hdr = NULL;
         unsigned char *p = NULL;
         hashdb_size_t *bp = NULL;
         hashdb_size_t hash;
@@ -411,6 +412,7 @@ hashdb_get(struct hashdb *hp, void *key)
         if (hashdb_sanity(hp))
                 return NULL;
 
+        hdr = &hp->hd_hdr;
         hash = hp->hd_hashfn(key, hdr->hh_key_size);
         bucket = hash % hdr->hh_nr_buckets;
         bp = (hashdb_size_t *)(hp->hd_hash_tab +
@@ -432,7 +434,7 @@ hashdb_get(struct hashdb *hp, void *key)
 int
 hashdb_rm(struct hashdb *hp, void *key)
 {
-        struct hashdb_header *hdr = &hp->hd_hdr;
+        struct hashdb_header *hdr = NULL;
         unsigned char *p = NULL;
         unsigned char *elemp = p;
         unsigned char *bkt_p = NULL;
@@ -442,6 +444,10 @@ hashdb_rm(struct hashdb *hp, void *key)
         hashdb_size_t prev;
         hashdb_size_t chainlen;
 
+        if (hashdb_sanity(hp))
+                return -1;
+
+        hdr = &hp->hd_hdr;
         hash = hp->hd_hashfn(key, hdr->hh_key_size);
         bucket = hash % hdr->hh_nr_buckets;
         bkt_p = hp->hd_hash_tab + (sizeof(hashdb_size_t) * bucket);
