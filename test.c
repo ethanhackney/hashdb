@@ -91,7 +91,7 @@ main(int argc, char **argv)
                         buf[strlen(buf) - 1] = 0;
 
                 for (base = end = buf; *end; ++end) {
-                        if (isalpha(*end))
+                        if (isalpha(*end) || *end == '_')
                                 continue;
                         word_inc(base, end);
                         base = end + 1;
