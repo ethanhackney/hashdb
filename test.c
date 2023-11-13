@@ -118,6 +118,7 @@ main(int argc, char **argv)
                 printf("%ld: %s\n", (long)wf->count, wf->word);
                 free(word);
         }
+        free(words);
 
         if (hashdb_free(&g_wordfreq, false))
                 err(EX_SOFTWARE, "hashdb_free()");
