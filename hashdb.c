@@ -388,6 +388,7 @@ hashdb_set(struct hashdb *hp, void *key, void *value)
         next = HASHDB_NODE_P(p)->hn_next;
         keyp = p + sizeof(hashdb_size_t);
         valp = UCHAR_P(keyp) + hdr->hh_key_size;
+
         memcpy(keyp, key, hdr->hh_key_size);
         memcpy(valp, value, hdr->hh_value_size);
         hdr->hh_free = next;

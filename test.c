@@ -1,62 +1,208 @@
 #include "hashdb.h"
 #include <err.h>
+#include <errno.h>
 #include <stdio.h>
 #include <sysexits.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+enum {
+        /* default number of nodes in node table */
+        DEFAULT_NR_NODE         = 8192,
+        /* default number of buckets in hash table */
+        DEFAULT_NR_BUCKET       = 4096,
+        /* max size of word */
+        WORD_SIZE               = 127,
+};
+
+/* word frequency */
+struct word_freq {
+        char word[WORD_SIZE + 1];
+        hashdb_size_t count;
+};
+
+/* strtol with error checking */
+static long e_strtol(const char *nptr, char **endptr, int base);
+
+/* print usage and exit */
+static void usage(char *progname);
+
+/* hash table for storing word frequencies */
+static struct hashdb *g_wordfreq;
+
+/* list of all words read */
+static char     **words;
+static size_t   words_len;
+static size_t   words_cap;
+
+/* key comparison */
+static int word_cmp(const void *a, const void *b, hashdb_size_t size);
+
+static size_t word_hash(const void *key, hashdb_size_t size);
+
+/* increment word frequency */
+static void word_inc(char *base, char *end);
 
 int
-main(void)
+main(int argc, char **argv)
 {
-        struct user {
-                char uname[64];
-                char pword[64];
-        } users[] = {
-                { "ethan", "dummy" },
-                { "chris", "boywonder" },
-                { "sonny", "legend" },
-                { "jon", "gamer" },
-                { "luke", "og" },
-                { "pat", "savant" },
-                { "" },
-        };
-        struct hashdb *db = NULL;
-        struct user *up = NULL;
-        struct user *upp = NULL;
-        hashdb_size_t nr_nodes = 4;
-        hashdb_size_t nr_buckets = 4;
+        hashdb_size_t nr_nodes = 0;
+        hashdb_size_t nr_buckets = 0;
+        size_t i;
+        char buf[BUFSIZ];
+        int c;
 
-        db = hashdb_init("userdb",
-                         HASHDB_FLAG_SANE_MODE,
-                         nr_nodes,
-                         nr_buckets,
-                         sizeof(users[0].uname),
-                         sizeof(users[0].pword),
-                         NULL,
-                         NULL,
-                         0666);
-        if (!db)
-                err(EX_SOFTWARE, "hashdb_init()");
-
-        for (up = users; *up->uname; ++up) {
-                if (!hashdb_set(db, up->uname, up->pword)) {
-                        perror("hashdb_set");
+        while ((c = getopt(argc, argv, "n:b:")) != -1) {
+                switch (c) {
+                case 'n':
+                        nr_nodes = e_strtol(optarg, NULL, 10);
                         break;
+                case 'b':
+                        nr_buckets = e_strtol(optarg, NULL, 10);
+                        break;
+                default:
+                        usage(argv[0]);
+                        /* does not return */
                 }
         }
-        hashdb_rm(db, users[0].uname);
 
-        hashdb_free(&db, false);
-        db = hashdb_open("userdb", HASHDB_FLAG_SANE_MODE, NULL, NULL);
+        if (!nr_nodes)
+                nr_nodes = DEFAULT_NR_NODE;
+        if (!nr_buckets)
+                nr_buckets = DEFAULT_NR_BUCKET;
 
-        for (upp = users; upp < up; ++upp) {
-                struct user *p = NULL;
+        g_wordfreq = hashdb_init("wordfreq",
+                                 HASHDB_FLAG_SANE_MODE,
+                                 nr_nodes,
+                                 nr_buckets,
+                                 (WORD_SIZE + 1),
+                                 sizeof(int),
+                                 word_hash,
+                                 word_cmp,
+                                 0666);
+        if (!g_wordfreq)
+                err(EX_SOFTWARE, "wordfreq()");
 
-                p = hashdb_get(db, upp->uname);
-                if (!p)
-                        printf("%s not found\n", upp->uname);
-                else
-                        printf("%s's password is %s\n", upp->uname, p->pword);
+        while (fgets(buf, sizeof(buf), stdin)) {
+                char *base, *end;
+
+                if (buf[strlen(buf) - 1] == '\n')
+                        buf[strlen(buf) - 1] = 0;
+
+                for (base = end = buf; *end; ++end) {
+                        if (isalpha(*end))
+                                continue;
+                        word_inc(base, end);
+                        base = end + 1;
+                }
+                word_inc(base, end);
         }
 
-        if (hashdb_free(&db, false))
+        if (hashdb_free(&g_wordfreq, false))
                 err(EX_SOFTWARE, "hashdb_free()");
+
+        g_wordfreq = hashdb_open("wordfreq", HASHDB_FLAG_SANE_MODE,
+                        word_hash, word_cmp);
+        if (!g_wordfreq)
+                err(EX_SOFTWARE, "hashdb_open()");
+
+        for (i = 0; i < words_len; ++i) {
+                struct word_freq *wf;
+                char *word = words[i];
+
+                wf = hashdb_get(g_wordfreq, word);
+                if (!wf)
+                        err(EX_SOFTWARE, "hashdb_get(%s)", word);
+
+                printf("%ld: %s\n", (long)wf->count, wf->word);
+                free(word);
+        }
+
+        if (hashdb_free(&g_wordfreq, false))
+                err(EX_SOFTWARE, "hashdb_free()");
+}
+
+static long
+e_strtol(const char *nptr, char **endptr, int base)
+{
+        long res;
+
+        errno = 0;
+        res = strtol(nptr, endptr, base);
+        if (errno)
+                err(EX_SOFTWARE, "strtol(%s)", nptr);
+
+        return res;
+}
+
+static void
+usage(char *progname)
+{
+        fprintf(stderr, "%s: Usage\n", progname);
+        fprintf(stderr, "\t-n:  number of nodes in node table\n");
+        fprintf(stderr, "\t-b:  number of buckets in hash table\n");
+        fprintf(stderr, "\t-k:  key size\n");
+        exit(EXIT_FAILURE);
+}
+
+static void
+word_inc(char *base, char *end)
+{
+        struct word_freq *wf = NULL;
+
+        /* empty word */
+        if (!(end - base))
+                return;
+
+        /* word that is too big */
+        *end = 0;
+        if ((end - base) >= WORD_SIZE) {
+                errno = E2BIG;
+                warn("\"%s\" too long", base);
+                return;
+        }
+
+        wf = hashdb_get(g_wordfreq, base);
+        if (!wf) {
+                char *dup;
+                hashdb_size_t count = 1;
+
+                wf = hashdb_set(g_wordfreq, base, &count);
+                if (!wf)
+                        err(EX_SOFTWARE, "hashdb_set(%s)", base);
+
+                if (words_len == words_cap) {
+                        words_cap = words_cap ? words_cap * 2 : 1;
+                        words = realloc(words, sizeof(*words) * words_cap);
+                        if (!words)
+                                err(EX_SOFTWARE, "realloc()");
+                }
+
+                dup = strdup(base);
+                if (!dup)
+                        err(EX_SOFTWARE, "strdup(%s)", base);
+                words[words_len++] = dup;
+        }
+        ++wf->count;
+}
+
+static int
+word_cmp(const void *a, const void *b, hashdb_size_t size)
+{
+        const char *astr = a;
+        const char *bstr = b;
+        return strcmp(astr, bstr);
+}
+
+static size_t
+word_hash(const void *key, hashdb_size_t size)
+{
+        const char *kp = key;
+        hashdb_size_t hash = 0;
+
+        while (*kp)
+                hash = hash * 31 + *kp++;
+
+        return hash;
 }
